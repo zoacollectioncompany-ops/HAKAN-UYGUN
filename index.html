@@ -85,6 +85,9 @@ nav a.link:hover { color: var(--gold-bright); }
   background: radial-gradient(ellipse 60% 80% at 80% 40%, rgba(200,169,110,.07), transparent 65%), var(--ink-mid);
   padding: 96px 0 88px; border-bottom: 1px solid var(--line);
 }
+.hero-in { display: grid; grid-template-columns: 1.1fr 1fr; gap: 32px; align-items: center; }
+.hero-globe { position: relative; width: 100%; aspect-ratio: 1 / 1; max-width: 520px; justify-self: end; }
+.hero-globe canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .hero h1 { font-size: 52px; letter-spacing: -.5px; margin-bottom: 10px; }
 .hero .role { font-size: 20px; color: var(--gold); font-weight: 600; margin-bottom: 22px; }
 .hero p.lead { margin-bottom: 36px; }
@@ -173,6 +176,9 @@ footer b { color: var(--gold); }
   nav a.link { display: none; }
   .hero { padding: 64px 0; }
   .hero h1 { font-size: 38px; }
+  .hero-in { grid-template-columns: 1fr; gap: 12px; }
+  .hero-globe { max-width: 320px; justify-self: center; margin-top: 8px; }
+
   h2 { font-size: 26px; }
   section.block { padding: 64px 0; }
   .contact-grid { grid-template-columns: 1fr; gap: 40px; }
@@ -210,7 +216,8 @@ footer b { color: var(--gold); }
 
   <!-- HERO -->
   <section class="hero">
-    <div class="container">
+    <div class="container hero-in">
+      <div class="hero-copy">
       <div class="eyebrow" data-tr="Uluslararası İhracat Danışmanı" data-en="International Export Consultant">Uluslararası İhracat Danışmanı</div>
       <h1>Hakan Uygun</h1>
       <div class="role" data-tr="Global Ticaret Stratejisti" data-en="Global Trade Strategist">Global Ticaret Stratejisti</div>
@@ -219,6 +226,8 @@ footer b { color: var(--gold); }
         <a href="#contact" class="btn btn-primary" data-tr="İletişime Geçin" data-en="Contact Me">İletişime Geçin</a>
         <a href="#services" class="btn btn-outline" data-tr="Hizmetlerim" data-en="My Services">Hizmetlerim</a>
       </div>
+      </div>
+      <div class="hero-globe" aria-hidden="true"><canvas id="globe"></canvas></div>
     </div>
   </section>
 
@@ -351,6 +360,72 @@ function setLang(l) {
     });
   }, { threshold: 0.1 });
   document.querySelectorAll('.rv').forEach(function (el) { io.observe(el); });
+})();
+
+/* Rotating particle globe */
+(function () {
+  var cv = document.getElementById('globe');
+  if (!cv) return;
+  var ctx = cv.getContext('2d');
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var N = window.innerWidth < 900 ? 1700 : 2800;
+  var pts = [], i;
+  for (i = 0; i < N; i++) {
+    var u = Math.random() * 2 - 1;
+    var y = (u < 0 ? -1 : 1) * Math.pow(Math.abs(u), 0.62);      // denser near the poles
+    var th = Math.random() * Math.PI * 2;
+    var r = Math.random() < 0.14 ? Math.random() * 0.9 : 1 - Math.pow(Math.random(), 3) * 0.07;
+    var s = Math.sqrt(1 - y * y);
+    pts.push({ x: Math.cos(th) * s * r, y: y * r, z: Math.sin(th) * s * r, ph: Math.random() * 6.283, sz: Math.random() * 0.9 + 0.5 });
+  }
+  var W = 0, H = 0, dpr = 1, ang = 0, tilt = 0.28, last = 0, visible = true;
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function draw(t) {
+    ctx.clearRect(0, 0, W, H);
+    var R = Math.min(W, H) * 0.42, cx = W / 2, cy = H / 2;
+    var ca = Math.cos(ang), sa = Math.sin(ang), ct = Math.cos(tilt), st = Math.sin(tilt);
+    var fov = 3.2;
+    for (var k = 0; k < pts.length; k++) {
+      var p = pts[k];
+      var x1 = p.x * ca + p.z * sa;
+      var z1 = -p.x * sa + p.z * ca;
+      var y2 = p.y * ct - z1 * st;
+      var z2 = p.y * st + z1 * ct;
+      var sc = fov / (fov + z2);
+      var depth = (z2 + 1) / 2;                       // 0 back .. 1 front
+      var tw = 0.8 + 0.2 * Math.sin(t * 0.0015 + p.ph);
+      var a = (0.12 + 0.8 * depth) * tw;
+      ctx.globalAlpha = a;
+      ctx.fillStyle = depth > 0.62 ? '#f3e3b8' : '#c8a96e';
+      var size = p.sz * sc * (1 + depth * 0.9);
+      ctx.fillRect(cx + x1 * R * sc - size / 2, cy + y2 * R * sc - size / 2, size, size);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function loop(t) {
+    if (visible && !document.hidden) {
+      var dt = last ? Math.min(t - last, 50) : 16;
+      ang += dt * 0.00018;                              // slow, calm rotation
+      draw(t);
+    }
+    last = t;
+    requestAnimationFrame(loop);
+  }
+
+  resize();
+  window.addEventListener('resize', resize);
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(function (e) { visible = e[0].isIntersecting; }).observe(cv);
+  }
+  if (reduce) { ang = 0.6; draw(0); } else { requestAnimationFrame(loop); }
 })();
 </script>
 </body>
